@@ -18,7 +18,7 @@ const ShadowCompositor: React.FC = () => {
         <div style={styles.headerLeft}>
           <h1 style={styles.title}>Shadow<span style={styles.titleAccent}>Forge</span></h1>
         </div>
-        
+
         <div style={{...styles.statusBadge, ...(status === '✅ Ready' ? styles.statusSuccess : {})}}>
           {status}
         </div>
@@ -41,11 +41,11 @@ const ShadowCompositor: React.FC = () => {
 
       <div style={styles.workspace}>
         <aside style={styles.sidebar}>
-          
-          {/* Assets */}
+
+          {}
           <div style={styles.panel}>
             <h3 style={styles.panelTitle}>📂 Assets</h3>
-            
+
             <div style={styles.inputGroup}>
               <label style={styles.label}>1. Subject</label>
               <div style={styles.fileWrapper}>
@@ -82,7 +82,7 @@ const ShadowCompositor: React.FC = () => {
                 {assets.depthSource === 'ai' && <span style={styles.tagAi}>AI Generated</span>}
                 {assets.depthSource === 'user' && <span style={styles.tagUser}>Uploaded</span>}
               </div>
-              
+
               <input 
                 type="file" 
                 onChange={(e) => e.target.files?.[0] && handleUpload(e.target.files[0], 'depth')}
@@ -96,10 +96,10 @@ const ShadowCompositor: React.FC = () => {
             </div>
           </div>
 
-          {/* Light Control */}
+          {}
           <div style={{...styles.panel, ...((!assets.bgImage || !assets.cutout) ? styles.disabled : {})}}>
             <h3 style={styles.panelTitle}>☀️ Directional Light</h3>
-            
+
             <div style={styles.controlRow}>
               <div style={styles.rowHeader}>
                 <span style={styles.label}>Angle (Azimuth)</span>
@@ -112,7 +112,7 @@ const ShadowCompositor: React.FC = () => {
                 style={styles.slider} 
               />
             </div>
-            
+
             <div style={styles.controlRow}>
               <div style={styles.rowHeader}>
                 <span style={styles.label}>Elevation (Height)</span>
@@ -127,10 +127,10 @@ const ShadowCompositor: React.FC = () => {
             </div>
           </div>
 
-          {/* Physics */}
+          {}
           <div style={{...styles.panel, ...((!assets.bgImage || !assets.cutout) ? styles.disabled : {})}}>
             <h3 style={styles.panelTitle}>🎨 Shadow Physics</h3>
-            
+
             <div style={styles.controlRow}>
               <div style={styles.rowHeader}>
                 <span style={styles.label}>Opacity</span>
