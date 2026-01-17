@@ -8,4 +8,11 @@ export default defineConfig({
     // This tells Vite: "Don't try to bundle these. Leave them as-is."
     exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
   },
+  base: '/shadowGenerator/',
+
+  worker: {
+
+    format: 'es', 
+
+  },
 })
