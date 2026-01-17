@@ -4,7 +4,7 @@ ShadowForge is a client-side React application that combines computer vision AI 
 
 
 
-##  Architecture Overview
+## 🏗️ Architecture Overview
 
 The application uses an **Optimized Single-Threaded Architecture** to handle image processing and rendering directly within the React lifecycle.
 
@@ -18,7 +18,7 @@ The application uses an **Optimized Single-Threaded Architecture** to handle ima
 
 ---
 
-##  The AI Pipeline
+## 🧠 The AI Pipeline
 
 ### Pipeline A: Subject Extraction
 We use **`briaai/RMBG-1.4`** to generate a binary alpha mask.
@@ -34,7 +34,7 @@ We use **`Xenova/depth-anything-small-hf`** to understand the 3D geometry of the
 
 ---
 
-##  Shadow Physics & Math
+## 📐 Shadow Physics & Math
 
 The shadow is not a simple blurred copy. It is a **projected affine transformation** based on directional light geometry.
 
@@ -42,6 +42,7 @@ The shadow is not a simple blurred copy. It is a **projected affine transformati
 We simulate a directional light source defined by an **Azimuth Angle ($\theta$)** and an **Elevation Angle ($\phi$)**.
 
 The length of a shadow ($L$) cast by an object of height $h$ is determined by the elevation:
+
 $$L = \frac{h}{\tan(\phi)}$$
 
 To project the 2D cutout onto the "floor", we calculate a **Shear Transformation Matrix**.
@@ -51,6 +52,7 @@ Given the shadow length factor $K = 1 / \tan(\phi)$:
 * **Shear Y:** $S_y = -K \cdot \sin(\theta)$
 
 The canvas transformation matrix applied is:
+
 $$
 \begin{bmatrix}
 1 & 0 & S_x \\
@@ -58,6 +60,7 @@ $$
 0 & 0 & 1
 \end{bmatrix}
 $$
+
 *Note: The Y-scale is set to -0.5 to flip the image upside down (shadows fall away from feet) and squash it to simulate perspective on a ground plane.*
 
 ### 2. Contact Shadow Gradient
@@ -65,8 +68,9 @@ Real shadows are darker near the contact point (occlusion) and lighter further a
 
 * **Start Point:** The subject's "feet" (Pivot X, Pivot Y).
 * **End Point:** Calculated using trigonometry:
-    $$End_x = Pivot_x + \cos(\theta) \cdot (h \cdot K)$$
-    $$End_y = Pivot_y + \sin(\theta) \cdot (h \cdot K)$$
+
+$$End_x = Pivot_x + \cos(\theta) \cdot (h \cdot K)$$
+$$End_y = Pivot_y + \sin(\theta) \cdot (h \cdot K)$$
 
 ### 3. Depth Warping (The "Bonus" Mode)
 To make the shadow "drape" over uneven terrain (like cobblestones), we apply a **pixel displacement algorithm** during the render pass.
@@ -83,7 +87,7 @@ This shifts the shadow pixels "forward" where the ground is high (white), creati
 
 ---
 
-## Project Structure
+## 🛠️ Project Structure
 
 * **`src/ShadowCompositor.tsx`**: The main React component (View). Handles the UI layout, file inputs, and debug export buttons.
 * **`src/useShadowGenerator.ts`**: Custom Hook (Controller & Engine). Manages the render loop, executes the physics math, handles file upload logic, and runs the AI pipelines.
