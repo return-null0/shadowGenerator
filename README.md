@@ -1,93 +1,116 @@
-# ShadowForge: AI-Powered Realistic Shadow Generator
+# ShadowForge: Client-Side Inverse Ray-Marching Compositor
 
-ShadowForge is a client-side React application that combines computer vision AI models with a custom 2D rendering engine to create realistic, physics-based shadow composites for product photography and subject integration.
+ShadowForge is a high-performance React application that combines client-side computer vision models with a custom inverse rendering engine. It enables realistic subject integration by simulating physical light transport, variable penumbra (soft shadows), and geometric occlusion based on monocular depth estimation.
 
+## Capabilities
 
-
-## 🏗️ Architecture Overview
-
-The application uses an **Optimized Single-Threaded Architecture** to handle image processing and rendering directly within the React lifecycle.
-
-### 1. The Rendering Loop (Main Thread)
-* **Framework:** React + TypeScript + Vite.
-* **AI Inference:** `@huggingface/transformers` (running locally in-browser via ONNX Runtime Web).
-* **Optimization:** To maintain performance without a worker, the application extracts and caches raw pixel data (`Uint8ClampedArray`) from the Depth Map upon upload. This allows the render loop to perform pixel-level warping in real-time without expensive canvas reads every frame.
-
-### 2. State Management
-* **Role:** The `useShadowGenerator` hook acts as the central controller. It manages the AI model pipelines, handles file I/O, and executes the math for the shadow projection directly onto the HTML Canvas.
+* **Interactive Scene Graph:** Drag-and-drop positioning and scaling of subjects using bounding-box hit detection within the canvas context.
+* **Physics-Based Rendering (PBR) approximations:**
+    * **Directional Light:** Configurable Azimuth ($\theta$) and Elevation ($\phi$) angles.
+    * **Variable Penumbra:** Simulates an area light source where shadow blur increases with distance from the occluder (contact hardening).
+    * **Atmospheric Masking:** Automatically prevents shadows from casting on "infinite" depth pixels (sky/horizon).
+* **Geometric Shadow Displacement:** Uses depth maps to act as a height field, allowing shadows to "drape" correctly over 3D obstacles (cars, walls, stairs) rather than projecting flatly.
+* **Edge-Compute AI:** Runs segmentation and depth estimation entirely in the browser using ONNX Runtime Web (`@huggingface/transformers`).
 
 ---
 
-## 🧠 The AI Pipeline
+## Mathematical Formulation
 
-### Pipeline A: Subject Extraction
-We use **`briaai/RMBG-1.4`** to generate a binary alpha mask.
-1.  **Input:** User uploads a raw photo (e.g., a person standing).
-2.  **Inference:** The model outputs a probability map (tensor).
-3.  **Post-Process:** We map the tensor to an Alpha Channel, creating a transparent PNG (the "Cutout").
+The rendering engine treats the shadow not as a Gaussian blur filter, but as a geometric projection of the subject onto a reconstructed 3D surface.
 
-### Pipeline B: Monocular Depth Estimation
-We use **`Xenova/depth-anything-small-hf`** to understand the 3D geometry of the *background*.
-1.  **Input:** The background image.
-2.  **Inference:** The model predicts a relative depth value (0-255) for every pixel.
-3.  **Output:** A grayscale heatmap where White = Near/High and Black = Far/Low. This is cached in RAM for the physics engine.
+### 1. Affine Base Projection (Flat Surface)
+To approximate the shadow on a planar ground ($z=0$), we construct a shear transformation matrix derived from the light vector.
 
----
+Let $\phi$ be the light elevation angle ($0 < \phi < 90^\circ$) and $\theta$ be the azimuthal angle. The shadow length factor $K$ is inversely proportional to the tangent of the elevation:
 
-## 📐 Shadow Physics & Math
+$$K = \frac{1}{\tan(\phi)}$$
 
-The shadow is not a simple blurred copy. It is a **projected affine transformation** based on directional light geometry.
-
-### 1. Directional Projection (Shear Matrix)
-We simulate a directional light source defined by an **Azimuth Angle ($\theta$)** and an **Elevation Angle ($\phi$)**.
-
-The length of a shadow ($L$) cast by an object of height $h$ is determined by the elevation:
-
-$$L = \frac{h}{\tan(\phi)}$$
-
-To project the 2D cutout onto the "floor", we calculate a **Shear Transformation Matrix**.
-Given the shadow length factor $K = 1 / \tan(\phi)$:
-
-* **Shear X:** $S_x = -K \cdot \cos(\theta)$
-* **Shear Y:** $S_y = -K \cdot \sin(\theta)$
-
-The canvas transformation matrix applied is:
+The 2D affine transformation matrix $M$ applied to the subject sprite is:
 
 $$
-\begin{bmatrix}
-1 & 0 & S_x \\
-0 & -0.5 & S_y \\
+M = \begin{bmatrix}
+1 & 0 & -K \cos(\theta) \\
+0 & -0.5 & -K \sin(\theta) \\
 0 & 0 & 1
 \end{bmatrix}
 $$
 
-*Note: The Y-scale is set to -0.5 to flip the image upside down (shadows fall away from feet) and squash it to simulate perspective on a ground plane.*
+*Note: The $Y$ scaling factor of $-0.5$ accounts for the perspective foreshortening of the ground plane and flips the sprite vertically relative to the contact point.*
 
-### 2. Contact Shadow Gradient
-Real shadows are darker near the contact point (occlusion) and lighter further away. We simulate this using a linear gradient mask along the shadow vector.
+### 2. Inverse Ray-Marching (Height Field Projection)
+When a Depth Map is active, the engine treats the background image as a height field $H(x,y)$. We perform a simplified inverse ray-march to determine where a shadow ray intercepts the geometry.
 
-* **Start Point:** The subject's "feet" (Pivot X, Pivot Y).
-* **End Point:** Calculated using trigonometry:
+For a given pixel $P(x,y)$ in the shadow buffer with a normalized depth value $d \in [0, 1]$ derived from the Neural Depth Estimator:
 
-$$End_x = Pivot_x + \cos(\theta) \cdot (h \cdot K)$$
-$$End_y = Pivot_y + \sin(\theta) \cdot (h \cdot K)$$
+1.  **Height Reconstruction:** We estimate the physical height $h_{pixel}$ of the surface at $P$ relative to the subject's ground plane ($h_{ground}$):
+    $$h_{pixel} = (d - h_{ground}) \cdot S_{depth}$$
+    Where $S_{depth}$ is a user-defined scalar representing the maximum physical height in pixels.
 
-### 3. Depth Warping (The "Bonus" Mode)
-To make the shadow "drape" over uneven terrain (like cobblestones), we apply a **pixel displacement algorithm** during the render pass.
+2.  **Back-Projection Vector:**
+    If $h_{pixel} > 0$ (the surface is a wall/obstacle), the shadow hitting this point must originate from a point closer to the light source in the flat projection. The displacement magnitude $\Delta$ is calculated via trigonometry:
+    $$\Delta = \frac{h_{pixel}}{\tan(\phi)}$$
 
-For every pixel $P(x,y)$ in the shadow buffer:
-1.  We look up the **Depth Value** ($D$) from the cached depth array at $(x,y)$.
-2.  We calculate a displacement vector based on the light direction:
-    $$Shift = \frac{D}{255} \cdot Strength$$
-3.  We sample the source pixel from "upstream" (towards the light source):
-    $$Source_x = x - (\cos(\theta) \cdot Shift)$$
-    $$Source_y = y - (\sin(\theta) \cdot Shift)$$
+3.  **Source Sampling (inverse lookup):**
+    We sample the flat shadow map at coordinate $P'(x', y')$:
+    $$x' = x - (\cos(\theta) \cdot \Delta)$$
+    $$y' = y - (\sin(\theta) \cdot \Delta)$$
 
-This shifts the shadow pixels "forward" where the ground is high (white), creating the illusion that the shadow is hitting the obstacle earlier.
+This approximates the parallax effect of a shadow climbing a vertical surface.
+
+### 3. Variable Penumbra (Area Light Simulation)
+Real shadows exhibit "contact hardening"—they are sharp near the occluder and blurry at a distance. We approximate this using a distance-dependent convolution.
+
+Let $r$ be the radial distance from the contact anchor point $(cx, cy)$. We generate two shadow layers:
+1.  **Umbra Layer ($L_u$):** High opacity, low blur ($\sigma \approx 0$).
+2.  **Penumbra Layer ($L_p$):** Low opacity, Gaussian blur with radius $R_{light}$.
+
+The final pixel color $C_{final}$ is a lerp (linear interpolation) controlled by a radial gradient mask $M(r)$:
+
+$$C_{final} = \text{lerp}(L_u, L_p, M(r))$$
+
+Where $M(r)$ transitions from $0$ (sharp) to $1$ (blurry) as $r$ increases.
 
 ---
 
-## 🛠️ Project Structure
+## The AI Pipeline
 
-* **`src/ShadowCompositor.tsx`**: The main React component (View). Handles the UI layout, file inputs, and debug export buttons.
-* **`src/useShadowGenerator.ts`**: Custom Hook (Controller & Engine). Manages the render loop, executes the physics math, handles file upload logic, and runs the AI pipelines.
+The application manages two concurrent inference sessions via WebGL acceleration:
+
+### Pipeline A: Subject Segmentation
+* **Model:** `briaai/RMBG-1.4`
+* **Task:** Generates a binary alpha mask from the RGB input.
+* **Post-Processing:** The tensor output is thresholded and applied as an alpha channel to the original image to create a movable "Cutout" asset.
+
+### Pipeline B: Monocular Depth Estimation
+* **Model:** `Xenova/depth-anything-small-hf`
+* **Task:** Predicts relative distance from the camera for every pixel.
+* **Preprocessing:** The raw tensor output is normalized using min-max scaling to maximize contrast for the physics engine:
+    $$d_{norm} = \frac{d_{raw} - \min(d)}{\max(d) - \min(d)} \times 255$$
+
+---
+
+## Architecture
+
+The application is built on **React + Vite** and avoids Web Workers for rendering to maintain zero-copy access to large Canvas buffers, optimizing for instantaneous interaction at 60 FPS.
+
+* **`ShadowCompositor.tsx`**: The View layer. Handles UI state, file I/O, and DOM events.
+* **`useShadowGenerator.ts`**: The Controller/Engine.
+    * Maintains the Scene Graph (`x, y, scale`).
+    * Manages the `CanvasRenderingContext2D` state.
+    * Executes the pixel manipulation loops (Sky Masking, Bilinear Sampling) on the CPU.
+
+## Getting Started
+
+1.  **Install Dependencies:**
+    ```bash
+    npm install
+    ```
+2.  **Run Development Server:**
+    ```bash
+    npm run dev
+    ```
+3.  **Usage:**
+    * Upload a Subject image (Automatic background removal).
+    * Upload a Background image (Automatic depth map generation).
+    * Drag the subject to position it.
+    * Adjust Light Angle and Depth Strength to match the scene geometry.
