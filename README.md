@@ -1,22 +1,20 @@
-# ShadowForge: AI-Powered Realistic Shadow Compositor
+# ShadowForge: AI-Powered Realistic Shadow Generator
 
 ShadowForge is a client-side React application that combines computer vision AI models with a custom 2D rendering engine to create realistic, physics-based shadow composites for product photography and subject integration.
 
-[Image of affine transformation matrix visualization]
 
-## Architecture Overview
 
-The application uses a **Multi-Threaded Architecture** to ensure 60fps performance during heavy image processing.
+##  Architecture Overview
 
-### 1. The Main Thread (UI & AI Orchestration)
-* **Framework:** React + TypeScript + Vite
+The application uses an **Optimized Single-Threaded Architecture** to handle image processing and rendering directly within the React lifecycle.
+
+### 1. The Rendering Loop (Main Thread)
+* **Framework:** React + TypeScript + Vite.
 * **AI Inference:** `@huggingface/transformers` (running locally in-browser via ONNX Runtime Web).
-* **Role:** Handles user inputs, manages state, and runs the initial heavy AI models (Subject Extraction and Depth Estimation). Once assets are generated, they are transferred to the Worker.
+* **Optimization:** To maintain performance without a worker, the application extracts and caches raw pixel data (`Uint8ClampedArray`) from the Depth Map upon upload. This allows the render loop to perform pixel-level warping in real-time without expensive canvas reads every frame.
 
-### 2. The Worker Thread (Render Engine)
-* **Technology:** Web Workers API + `OffscreenCanvas`.
-* **Role:** Holds the full-resolution images in memory (as `ImageBitmap` to prevent Garbage Collection churn). It runs the render loop, handles the pixel-manipulation for the depth warp, and draws directly to the canvas buffer transferred from the DOM.
-* **Communication:** Uses `postMessage` for lightweight config updates (e.g., slider changes) and `Transferable` objects for heavy asset transfers (zero-copy overhead).
+### 2. State Management
+* **Role:** The `useShadowGenerator` hook acts as the central controller. It manages the AI model pipelines, handles file I/O, and executes the math for the shadow projection directly onto the HTML Canvas.
 
 ---
 
@@ -32,7 +30,7 @@ We use **`briaai/RMBG-1.4`** to generate a binary alpha mask.
 We use **`Xenova/depth-anything-small-hf`** to understand the 3D geometry of the *background*.
 1.  **Input:** The background image.
 2.  **Inference:** The model predicts a relative depth value (0-255) for every pixel.
-3.  **Output:** A grayscale heatmap where White = Near/High and Black = Far/Low. This is cached in RAM as a `Uint8ClampedArray` for the physics engine.
+3.  **Output:** A grayscale heatmap where White = Near/High and Black = Far/Low. This is cached in RAM for the physics engine.
 
 ---
 
@@ -71,10 +69,10 @@ Real shadows are darker near the contact point (occlusion) and lighter further a
     $$End_y = Pivot_y + \sin(\theta) \cdot (h \cdot K)$$
 
 ### 3. Depth Warping (The "Bonus" Mode)
-To make the shadow "drape" over uneven terrain (like cobblestones), we apply a **pixel displacement algorithm** inside the Worker thread.
+To make the shadow "drape" over uneven terrain (like cobblestones), we apply a **pixel displacement algorithm** during the render pass.
 
 For every pixel $P(x,y)$ in the shadow buffer:
-1.  We look up the **Depth Value** ($D$) from the cached depth map at $(x,y)$.
+1.  We look up the **Depth Value** ($D$) from the cached depth array at $(x,y)$.
 2.  We calculate a displacement vector based on the light direction:
     $$Shift = \frac{D}{255} \cdot Strength$$
 3.  We sample the source pixel from "upstream" (towards the light source):
@@ -85,8 +83,7 @@ This shifts the shadow pixels "forward" where the ground is high (white), creati
 
 ---
 
-##  Project Structure
+## Project Structure
 
-* **`src/ShadowCompositor.tsx`**: The main React component (View). Handles the UI layout and file inputs.
-* **`src/useShadowGenerator.ts`**: Custom Hook (Controller). Manages the Worker lifecycle, handles file upload logic, and runs the AI pipelines.
-* **`src/shadow.worker.ts`**: The Render Engine (Model). Contains the `OffscreenCanvas` logic, the math described above, and the pixel loop.
+* **`src/ShadowCompositor.tsx`**: The main React component (View). Handles the UI layout, file inputs, and debug export buttons.
+* **`src/useShadowGenerator.ts`**: Custom Hook (Controller & Engine). Manages the render loop, executes the physics math, handles file upload logic, and runs the AI pipelines.
